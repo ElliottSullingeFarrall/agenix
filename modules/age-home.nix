@@ -124,6 +124,13 @@ with lib; let
           Permissions mode of the decrypted secret in a format understood by chmod.
         '';
       };
+      substitutions = mkOption {
+        type = types.listOf types.str;
+        default = [];
+        description = ''
+          List of paths to substitute in the decrypted secret.
+        '';
+      };
       symlink = mkEnableOption "symlinking secrets to their destination" // {default = true;};
     };
   });
@@ -233,5 +240,14 @@ in {
         StandardErrorPath = "${config.home.homeDirectory}/Library/Logs/agenix/stderr";
       };
     };
+
+    home.activation = {
+      agenix = lib.hm.dag.entryAnywhere mountingScript;
+    } // builtins.mapAttrs (label: secret: (lib.hm.dag.entryAfter [ "linkGeneration" "agenix" ] (lib.strings.concatLines 
+        (builtins.map (file: ''
+          run ${pkgs.gnused}/bin/sed -i "s#@${label}@#$(cat ${secret.path})#" ${file}
+        ''
+      ) secret.substitutions)))
+    ) config.age.secrets;
   };
 }
