@@ -179,6 +179,13 @@ with lib; let
           Group of the decrypted secret.
         '';
       };
+      substitutions = mkOption {
+        type = types.listOf types.str;
+        default = [];
+        description = ''
+          List of paths to substitute in the decrypted secret.
+        '';
+      };
       symlink = mkEnableOption "symlinking secrets to their destination" // {default = true;};
     };
   });
@@ -263,41 +270,49 @@ in {
     }
 
     (optionalAttrs (!isDarwin) {
+      system.activationScripts = {
       # Create a new directory full of secrets for symlinking (this helps
       # ensure removed secrets are actually removed, or at least become
       # invalid symlinks).
-      system.activationScripts.agenixNewGeneration = {
-        text = newGeneration;
-        deps = [
-          "specialfs"
-        ];
-      };
+        agenixNewGeneration = {
+          text = newGeneration;
+          deps = [
+            "specialfs"
+          ];
+        };
 
-      system.activationScripts.agenixInstall = {
-        text = installSecrets;
-        deps = [
-          "agenixNewGeneration"
-          "specialfs"
-        ];
-      };
+        agenixInstall = {
+          text = installSecrets;
+          deps = [
+            "agenixNewGeneration"
+            "specialfs"
+          ];
+        };
 
-      # So user passwords can be encrypted.
-      system.activationScripts.users.deps = ["agenixInstall"];
+        # So user passwords can be encrypted.
+        users.deps = ["agenixInstall"];
 
-      # Change ownership and group after users and groups are made.
-      system.activationScripts.agenixChown = {
-        text = chownSecrets;
-        deps = [
-          "users"
-          "groups"
-        ];
-      };
+        # Change ownership and group after users and groups are made.
+        agenixChown = {
+          text = chownSecrets;
+          deps = [
+            "users"
+            "groups"
+          ];
+        };
 
-      # So other activation scripts can depend on agenix being done.
-      system.activationScripts.agenix = {
-        text = "";
-        deps = ["agenixChown"];
-      };
+        # So other activation scripts can depend on agenix being done.
+        agenix = {
+          text = "";
+          deps = ["agenixChown"];
+        };
+
+      } // builtins.mapAttrs (label: secret: {
+        text = lib.strings.concatLines (builtins.map (file: ''
+            ${pkgs.gnused}/bin/sed -i "s#@${label}@#$(cat ${secret.path})#" ${file}
+          '') secret.substitutions);
+        deps = [ "agenix" ];
+      }) config.age.secrets;
     })
     (optionalAttrs isDarwin {
       launchd.daemons.activate-agenix = {
