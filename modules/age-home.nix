@@ -253,5 +253,9 @@ in {
         StandardErrorPath = "${config.home.homeDirectory}/Library/Logs/agenix/stderr";
       };
     };
+
+    home.activation.agenix = lib.mkIf pkgs.stdenv.hostPlatform.isLinux (
+      lib.hm.dag.entryAfter ["linkGeneration"] mountingScript
+    );
   };
 }
